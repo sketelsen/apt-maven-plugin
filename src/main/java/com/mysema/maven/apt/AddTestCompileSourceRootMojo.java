@@ -10,30 +10,24 @@ import java.io.File;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
 /**
  * AddTestCompileSourceRootMojo adds the folder for generated tests sources to the POM
- * 
- * @goal add-test-sources
- * @phase generate-sources
- * @threadSafe true
  */
+@Mojo(name="add-test-sources", defaultPhase=LifecyclePhase.GENERATE_SOURCES, threadSafe=true)
 public class AddTestCompileSourceRootMojo extends AbstractMojo {
     
-    /**
-     * @parameter expression="${project}" readonly=true required=true
-     */
+    @Parameter(defaultValue="${project}", readonly=true, required=true)
     private MavenProject project;
     
-    /**
-     * @parameter
-     */
+    @Parameter
     private File outputDirectory;
     
-    /**
-     * @parameter
-     */
+    @Parameter
     private File testOutputDirectory;
 
     @Override

@@ -27,6 +27,8 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.Component;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.Scanner;
 import org.codehaus.plexus.util.StringUtils;
@@ -43,39 +45,25 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
     private static final String JAVA_FILE_FILTER = "/*.java";
     private static final String[] ALL_JAVA_FILES_FILTER = new String[] { "**" + JAVA_FILE_FILTER };
 
-    /**
-     * @component
-     */
+    @Component
     private BuildContext buildContext;
 
-    /**
-     * @parameter expression="${project}" readonly=true required=true
-     */
+    @Parameter(defaultValue="${project}", readonly=true, required=true)
     private MavenProject project;
 
-    /**
-     * @parameter
-     */
+    @Parameter
     private String[] processors;
 
-    /**
-     * @parameter
-     */
+    @Parameter
     private String processor;
 
-    /**
-     * @parameter expression="${project.build.sourceEncoding}" required=true
-     */
+    @Parameter(defaultValue="${project.build.sourceEncoding}", required=true)
     private String sourceEncoding;
 
-    /**
-     * @parameter
-     */
+    @Parameter
     private Map<String, String> options;
 
-    /**
-     * @parameter
-     */
+    @Parameter
     private Map<String, String> compilerOptions;
 
     /**
@@ -91,30 +79,21 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
      * </pre>
      * 
      * will include all files which match com/mypackge/ ** /bo/ ** / *.java
-     * 
-     * @parameter
      */
+    @Parameter
     private Set<String> includes = new HashSet<String>();
 
-    /**
-     * @parameter
-     */
-    private boolean showWarnings = false;
+    @Parameter(defaultValue="false")
+    private boolean showWarnings;
 
-    /**
-     * @parameter
-     */
-    private boolean logOnlyOnError = false;
+    @Parameter(defaultValue="false")
+    private boolean logOnlyOnError;
 
-    /**
-     * @parameter expression="${plugin.artifacts}" readonly=true required=true
-     */
+    @Parameter(defaultValue="${plugin.artifacts}", readonly=true, required=true)
     private List<Artifact> pluginArtifacts;
 
-    /**
-     * @parameter
-     */
-    private boolean ignoreDelta = true;
+    @Parameter(defaultValue="true")
+    private boolean ignoreDelta;
 
     @SuppressWarnings("unchecked")
     private String buildCompileClasspath() {

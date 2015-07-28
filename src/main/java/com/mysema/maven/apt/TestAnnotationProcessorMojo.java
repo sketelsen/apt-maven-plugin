@@ -7,33 +7,30 @@ package com.mysema.maven.apt;
 
 import java.io.File;
 
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
+
 /**
  * TestAnnotationProcessorMojo calls APT processors for code generation
- * 
- * @goal test-process
- * @phase generate-test-sources
- * @requiresDependencyResolution test
- * @threadSafe true
  */
+@Mojo(name = "test-process", defaultPhase = LifecyclePhase.GENERATE_TEST_SOURCES, requiresDependencyResolution = ResolutionScope.TEST, threadSafe = true)
 public class TestAnnotationProcessorMojo extends AbstractProcessorMojo {
 
-    /**
-     * @parameter
-     */
+    @Parameter
     private File outputDirectory;
 
-    /**
-     * @parameter
-     */
+    @Parameter
     private File testOutputDirectory;
-  
+
     @Override
     public File getOutputDirectory() {
         return testOutputDirectory != null ? testOutputDirectory : outputDirectory;
     }
 
     @Override
-    protected boolean isForTest(){
+    protected boolean isForTest() {
         return true;
     }
 
@@ -44,5 +41,5 @@ public class TestAnnotationProcessorMojo extends AbstractProcessorMojo {
     public void setTestOutputDirectory(File testOutputDirectory) {
         this.testOutputDirectory = testOutputDirectory;
     }
-    
+
 }

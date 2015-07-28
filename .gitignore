@@ -8,6 +8,5 @@ test-output
 .idea
 .classpath
 .project
-.settings
 /.metadata
 .cache

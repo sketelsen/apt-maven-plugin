@@ -48,7 +48,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
     @Component
     private BuildContext buildContext;
 
-    @Parameter(defaultValue="${project}", readonly=true, required=true)
+    @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
 
     @Parameter
@@ -57,7 +57,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
     @Parameter
     private String processor;
 
-    @Parameter(defaultValue="${project.build.sourceEncoding}", required=true)
+    @Parameter(defaultValue = "${project.build.sourceEncoding}", required = true)
     private String sourceEncoding;
 
     @Parameter
@@ -83,16 +83,16 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
     @Parameter
     private Set<String> includes = new HashSet<String>();
 
-    @Parameter(defaultValue="false")
+    @Parameter(defaultValue = "false")
     private boolean showWarnings;
 
-    @Parameter(defaultValue="false")
+    @Parameter(defaultValue = "false")
     private boolean logOnlyOnError;
 
-    @Parameter(defaultValue="${plugin.artifacts}", readonly=true, required=true)
+    @Parameter(defaultValue = "${plugin.artifacts}", readonly = true, required = true)
     private List<Artifact> pluginArtifacts;
 
-    @Parameter(defaultValue="true")
+    @Parameter(defaultValue = "true")
     private boolean ignoreDelta;
 
     @SuppressWarnings("unchecked")
@@ -166,11 +166,11 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         if (options != null) {
             for (Map.Entry<String, String> entry : options.entrySet()) {
                 if (entry.getValue() != null) {
-                    compilerOpts.put("A" + entry.getKey() + "=" + entry.getValue(), null);    
+                    compilerOpts.put("A" + entry.getKey() + "=" + entry.getValue(), null);
                 } else {
                     compilerOpts.put("A" + entry.getKey() + "=", null);
                 }
-                
+
             }
         }
 
@@ -181,7 +181,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         if (!showWarnings) {
             compilerOpts.put("nowarn", null);
         }
-        
+
         StringBuilder builder = new StringBuilder();
         for (File file : getSourceDirectories()) {
             if (builder.length() > 0) {
@@ -219,7 +219,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
      * @return files for apt processing. Returns empty set when there is no
      *         files to process
      */
-    private Set<File> filterFiles(Set<File> directories) {
+    private Set<File> filterFiles(boolean incremental, Set<File> directories) {
         String[] filters = ALL_JAVA_FILES_FILTER;
         if (includes != null && !includes.isEmpty()) {
             filters = includes.toArray(new String[includes.size()]);
@@ -227,17 +227,17 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                 filters[i] = filters[i].replace('.', '/') + JAVA_FILE_FILTER;
             }
         }
-        
-        Set<File> files = new HashSet<File>();        
+
+        Set<File> files = new HashSet<File>();
         for (File directory : directories) {
             // support for incremental build in m2e context
             Scanner scanner = buildContext.newScanner(directory, false);
             scanner.setIncludes(filters);
-            scanner.scan();            
+            scanner.scan();
             String[] includedFiles = scanner.getIncludedFiles();
 
             // check also for possible deletions
-            if (buildContext.isIncremental() && (includedFiles == null || includedFiles.length == 0)) {
+            if (incremental && (includedFiles == null || includedFiles.length == 0)) {
                 scanner = buildContext.newDeleteScanner(directory);
                 scanner.setIncludes(filters);
                 scanner.scan();
@@ -245,7 +245,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             }
 
             // get all sources if ignoreDelta and at least one source file has changed
-            if (ignoreDelta && buildContext.isIncremental() && includedFiles != null && includedFiles.length > 0) {
+            if (ignoreDelta && incremental && includedFiles != null && includedFiles.length > 0) {
                 scanner = buildContext.newScanner(directory, true);
                 scanner.setIncludes(filters);
                 scanner.scan();
@@ -255,7 +255,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             if (includedFiles != null) {
                 for (String includedFile : includedFiles) {
                     files.add(new File(scanner.getBasedir(), includedFile));
-                }        
+                }
             }
         }
         return files;
@@ -297,12 +297,12 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
 
     public void execute() throws MojoExecutionException {
         if (getOutputDirectory() == null) {
-        	return;
-        }        
-        if ("true".equals(System.getProperty("maven.apt.skip"))) {
-        	return;
+            return;
         }
-        
+        if ("true".equals(System.getProperty("maven.apt.skip"))) {
+            return;
+        }
+
         if (!getOutputDirectory().exists()) {
             getOutputDirectory().mkdirs();
         }
@@ -327,7 +327,8 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                         + "If this occures during eclipse build make sure you run eclipse under JDK as well");
             }
 
-            Set<File> files = filterFiles(sourceDirectories);
+            boolean incremental = buildContext.isIncremental();
+            Set<File> files = filterFiles(incremental, sourceDirectories);
             if (files.isEmpty()) {
                 getLog().debug("No Java sources found (skipping)");
                 return;
@@ -337,7 +338,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             Iterable<? extends JavaFileObject> compilationUnits1 = fileManager.getJavaFileObjectsFromFiles(files);
             // clean all markers
             for (JavaFileObject javaFileObject : compilationUnits1) {
-            	buildContext.removeMessages(new File(javaFileObject.toUri().getPath()));
+                buildContext.removeMessages(new File(javaFileObject.toUri().getPath()));
             }
 
             String compileClassPath = buildCompileClasspath();
@@ -347,8 +348,8 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             String outputDirectory = getOutputDirectory().getPath();
             File tempDirectory = null;
 
-            if (buildContext.isIncremental()) {
-                tempDirectory = new File(project.getBuild().getDirectory(), "apt"+System.currentTimeMillis());
+            if (incremental) {
+                tempDirectory = new File(project.getBuild().getDirectory(), "apt" + System.currentTimeMillis());
                 tempDirectory.mkdirs();
                 outputDirectory = tempDirectory.getAbsolutePath();
             }
@@ -373,7 +374,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             } finally {
                 executor.shutdown();
                 if (tempDirectory != null) {
-                    FileSync.syncFiles(tempDirectory, getOutputDirectory());
+                    FileSync.syncFiles(incremental, tempDirectory, getOutputDirectory());
                     FileUtils.deleteDirectory(tempDirectory);
                 }
             }
@@ -382,7 +383,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         } catch (Exception e1) {
             getLog().error("execute error", e1);
             throw new MojoExecutionException(e1.getMessage(), e1);
-            
+
         } finally {
             if (fileManager != null) {
                 try {
@@ -395,19 +396,18 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
     }
 
     protected abstract File getOutputDirectory();
-    
+
     @SuppressWarnings("unchecked")
     protected Set<File> getSourceDirectories() {
         File outputDirectory = getOutputDirectory();
         String outputPath = outputDirectory.getAbsolutePath();
-        Set<File> directories = new HashSet<File>();        
-        List<String> directoryNames = isForTest() ? project.getTestCompileSourceRoots() 
-                                                  : project.getCompileSourceRoots();
+        Set<File> directories = new HashSet<File>();
+        List<String> directoryNames = isForTest() ? project.getTestCompileSourceRoots() : project.getCompileSourceRoots();
         for (String name : directoryNames) {
             File file = new File(name);
             if (!file.getAbsolutePath().equals(outputPath) && file.exists()) {
-                directories.add(file);    
-            }            
+                directories.add(file);
+            }
         }
         return directories;
     }

@@ -18,14 +18,16 @@ import org.apache.commons.io.FileUtils;
  */
 public class FileSync {
 
-    public static void syncFiles(File source, File target) throws IOException {
+    public static void syncFiles(boolean incremental, File source, File target) throws IOException {
         Set<String> sourceFiles = Sets.newHashSet(source.list());
         Set<String> targetFiles = Sets.newHashSet(target.list());
 
-        // remove files from target that are not in source
-        for (String targetFile : targetFiles) {
-            if (!sourceFiles.contains(targetFile)) {
-                deleteFile(new File(target, targetFile));
+        if (!incremental) {
+            // remove files from target that are not in source
+            for (String targetFile : targetFiles) {
+                if (!sourceFiles.contains(targetFile)) {
+                    deleteFile(new File(target, targetFile));
+                }
             }
         }
 
@@ -36,7 +38,7 @@ public class FileSync {
                 copyIfChanged(file, file2);
             } else {
                 file2.mkdir();
-                syncFiles(file, file2);
+                syncFiles(incremental, file, file2);
             }
         }
     }
@@ -64,7 +66,4 @@ public class FileSync {
 
     private FileSync() {}
 
-
 }
-
-

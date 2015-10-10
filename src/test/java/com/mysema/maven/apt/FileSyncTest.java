@@ -33,7 +33,7 @@ public class FileSyncTest {
         File targetFile = new File(target, "inTarget");
         targetFile.createNewFile();
 
-        FileSync.syncFiles(false, source, target);
+        FileSync.syncFiles(true, source, target);
         assertTrue(new File(target, "inSource").exists());
         assertTrue(new File(target, "inSourceFolder" + File.separator + "inSource").exists());
         assertFalse(targetFile.exists());
@@ -49,7 +49,7 @@ public class FileSyncTest {
         Files.write("abc", targetFile, Charsets.UTF_8);
         long modified = targetFile.lastModified();
 
-        FileSync.syncFiles(false, source, target);
+        FileSync.syncFiles(true, source, target);
         assertEquals(modified, targetFile.lastModified());
     }
 
@@ -70,7 +70,7 @@ public class FileSyncTest {
         Files.write("ghi", targetFile1, Charsets.UTF_8);
         Files.write("jkl", targetFile2, Charsets.UTF_8);
 
-        FileSync.syncFiles(false, source, target);
+        FileSync.syncFiles(true, source, target);
         assertFalse(targetFile1.exists());
         assertFalse(targetFile2.exists());
         assertFalse(targetFile2.getParentFile().exists());

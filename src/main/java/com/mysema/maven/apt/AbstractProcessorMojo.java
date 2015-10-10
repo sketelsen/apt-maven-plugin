@@ -149,8 +149,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         }
     }
 
-    private List<String> buildCompilerOptions(String processor, String compileClassPath,
-                                              String outputDirectory) throws IOException {
+    private List<String> buildCompilerOptions(String processor, String compileClassPath, String outputDirectory) throws IOException {
         Map<String, String> compilerOpts = new LinkedHashMap<String, String>();
 
         // Default options
@@ -208,18 +207,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         return opts;
     }
 
-    /**
-     * Filter files for apt processing based on the {@link #includes} filter and
-     * also taking into account m2e {@link BuildContext} to filter-out unchanged
-     * files when invoked as incremental build
-     * 
-     * @param directories
-     *            source directories in which files are located for apt processing
-     * 
-     * @return files for apt processing. Returns empty set when there is no
-     *         files to process
-     */
-    private Set<File> filterFiles(boolean incremental, Set<File> directories) {
+    private Set<File> filterFiles(boolean incremental, boolean hasDeletedFiles, Set<File> directories) {
         String[] filters = ALL_JAVA_FILES_FILTER;
         if (includes != null && !includes.isEmpty()) {
             filters = includes.toArray(new String[includes.size()]);
@@ -231,26 +219,10 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         Set<File> files = new HashSet<File>();
         for (File directory : directories) {
             // support for incremental build in m2e context
-            Scanner scanner = buildContext.newScanner(directory, false);
+            Scanner scanner = buildContext.newScanner(directory, hasDeletedFiles);
             scanner.setIncludes(filters);
             scanner.scan();
             String[] includedFiles = scanner.getIncludedFiles();
-
-            // check also for possible deletions
-            if (incremental && (includedFiles == null || includedFiles.length == 0)) {
-                scanner = buildContext.newDeleteScanner(directory);
-                scanner.setIncludes(filters);
-                scanner.scan();
-                includedFiles = scanner.getIncludedFiles();
-            }
-
-            // get all sources if ignoreDelta and at least one source file has changed
-            if (ignoreDelta && incremental && includedFiles != null && includedFiles.length > 0) {
-                scanner = buildContext.newScanner(directory, true);
-                scanner.setIncludes(filters);
-                scanner.scan();
-                includedFiles = scanner.getIncludedFiles();
-            }
 
             if (includedFiles != null) {
                 for (String includedFile : includedFiles) {
@@ -259,6 +231,26 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             }
         }
         return files;
+    }
+
+    private boolean containsDeletedFiles(Set<File> directories) {
+        String[] filters = ALL_JAVA_FILES_FILTER;
+        if (includes != null && !includes.isEmpty()) {
+            filters = includes.toArray(new String[includes.size()]);
+            for (int i = 0; i < filters.length; i++) {
+                filters[i] = filters[i].replace('.', '/') + JAVA_FILE_FILTER;
+            }
+        }
+        for (File directory : directories) {
+            Scanner scanner = buildContext.newDeleteScanner(directory);
+            scanner.setIncludes(filters);
+            scanner.scan();
+            String[] includedFiles = scanner.getIncludedFiles();
+            if (includedFiles != null && includedFiles.length > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -279,17 +271,17 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                 int columnNumber = (int) diagnostic.getColumnNumber();
                 String message = diagnostic.getMessage(Locale.getDefault());
                 switch (kind) {
-                    case ERROR:
-                        buildContext.addMessage(file, lineNumber, columnNumber, message, BuildContext.SEVERITY_ERROR, null);
-                        break;
-                    case WARNING:
-                    case MANDATORY_WARNING:
-                        buildContext.addMessage(file, lineNumber, columnNumber, message, BuildContext.SEVERITY_WARNING, null);
-                        break;
-                    case NOTE:
-                    case OTHER:
-                    default:
-                        break;
+                case ERROR:
+                    buildContext.addMessage(file, lineNumber, columnNumber, message, BuildContext.SEVERITY_ERROR, null);
+                    break;
+                case WARNING:
+                case MANDATORY_WARNING:
+                    buildContext.addMessage(file, lineNumber, columnNumber, message, BuildContext.SEVERITY_WARNING, null);
+                    break;
+                case NOTE:
+                case OTHER:
+                default:
+                    break;
                 }
             }
         }
@@ -323,12 +315,13 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         try {
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             if (compiler == null) {
-                throw new MojoExecutionException("You need to run build with JDK or have tools.jar on the classpath."
-                        + "If this occures during eclipse build make sure you run eclipse under JDK as well");
+                throw new MojoExecutionException(
+                        "You need to run build with JDK or have tools.jar on the classpath." + "If this occures during eclipse build make sure you run eclipse under JDK as well");
             }
 
             boolean incremental = buildContext.isIncremental();
-            Set<File> files = filterFiles(incremental, sourceDirectories);
+            boolean hasDeletedFiles = containsDeletedFiles(sourceDirectories);
+            Set<File> files = filterFiles(incremental, hasDeletedFiles, sourceDirectories);
             if (files.isEmpty()) {
                 getLog().debug("No Java sources found (skipping)");
                 return;
@@ -346,13 +339,9 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             String processor = buildProcessor();
 
             String outputDirectory = getOutputDirectory().getPath();
-            File tempDirectory = null;
-
-            if (incremental) {
-                tempDirectory = new File(project.getBuild().getDirectory(), "apt" + System.currentTimeMillis());
-                tempDirectory.mkdirs();
-                outputDirectory = tempDirectory.getAbsolutePath();
-            }
+            File tempDirectory = new File(project.getBuild().getDirectory(), "apt" + System.currentTimeMillis());
+            tempDirectory.mkdirs();
+            outputDirectory = tempDirectory.getAbsolutePath();
 
             List<String> compilerOptions = buildCompilerOptions(processor, compileClassPath, outputDirectory);
 
@@ -373,10 +362,9 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                 processDiagnostics(diagnosticCollector.getDiagnostics());
             } finally {
                 executor.shutdown();
-                if (tempDirectory != null) {
-                    FileSync.syncFiles(incremental, tempDirectory, getOutputDirectory());
-                    FileUtils.deleteDirectory(tempDirectory);
-                }
+                boolean deleteFilesInOutputDirectory = hasDeletedFiles || !incremental;
+                FileSync.syncFiles(deleteFilesInOutputDirectory, tempDirectory, getOutputDirectory());
+                FileUtils.deleteDirectory(tempDirectory);
             }
 
             buildContext.refresh(getOutputDirectory());

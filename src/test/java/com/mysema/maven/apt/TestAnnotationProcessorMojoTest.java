@@ -7,7 +7,6 @@ import java.net.URLClassLoader;
 import java.util.List;
 
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
-import org.apache.maven.model.Build;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
@@ -28,17 +27,11 @@ public class TestAnnotationProcessorMojoTest {
         File targetDir = new File("target");
         File outputDir = new File(targetDir, "generated-test-sources/java");
         Log log = EasyMock.createMock(Log.class);
-        Build build = EasyMock.createMock(Build.class);
         BuildContext buildContext = new DefaultBuildContext();
         MavenProject project = EasyMock.createMock(MavenProject.class);
-        List sourceRoots = Lists.newArrayList("src/test/resources/project-to-test/src/test/java");
+        List<String> sourceRoots = Lists.newArrayList("src/test/resources/project-to-test/src/test/java");
         URLClassLoader loader = (URLClassLoader) Thread.currentThread().getContextClassLoader();
-        List classpath = ClassPathUtils.getClassPath(loader);
-        EasyMock.expect(project.getBuild()).andReturn(build);
-        EasyMock.expect(project.getTestCompileSourceRoots()).andReturn(sourceRoots);
-        EasyMock.expect(project.getTestCompileSourceRoots()).andReturn(sourceRoots);
-        EasyMock.expect(project.getTestClasspathElements()).andReturn(classpath);
-        EasyMock.expect(build.getDirectory()).andReturn(targetDir.getPath());
+        List<String> classpath = ClassPathUtils.getClassPath(loader);
         project.addTestCompileSourceRoot(outputDir.getAbsolutePath());
         EasyMock.expectLastCall();
         EasyMock.replay(project);
@@ -54,6 +47,8 @@ public class TestAnnotationProcessorMojoTest {
         mojo.setProject(project);
         mojo.setSourceEncoding("UTF-8");
         mojo.setOutputDirectory(outputDir);
+        mojo.testClasspathElements = classpath;
+        mojo.testCompileSourceRoots = sourceRoots;
         mojo.execute();
 
         EasyMock.verify(project);

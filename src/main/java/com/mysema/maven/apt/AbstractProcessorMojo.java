@@ -23,8 +23,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
@@ -33,6 +33,9 @@ import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.Scanner;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.plexus.build.incremental.BuildContext;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Function;
 
 /**
  * Base class for AnnotationProcessorMojo implementations
@@ -95,18 +98,33 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
     @Parameter(defaultValue = "true")
     private boolean ignoreDelta;
 
-    @SuppressWarnings("unchecked")
+    @VisibleForTesting
+    @Parameter(defaultValue = "${project.build.directory}", readonly = true, required = true)
+    File projectBuildDirectory;
+
+    @VisibleForTesting
+    @Parameter(defaultValue = "${project.compileSourceRoots}", readonly = true, required = true)
+    List<String> compileSourceRoots;
+
+    @VisibleForTesting
+    @Parameter(defaultValue = "${project.compileClasspathElements}", readonly = true, required = true)
+    List<String> compileClasspathElements;
+
+    @VisibleForTesting
+    @Parameter(defaultValue = "${project.testCompileSourceRoots}", readonly = true, required = true)
+    List<String> testCompileSourceRoots;
+
+    @VisibleForTesting
+    @Parameter(defaultValue = "${project.testClasspathElements}", readonly = true, required = true)
+    List<String> testClasspathElements;
+
     private String buildCompileClasspath() {
         List<String> pathElements = null;
-        try {
-            if (isForTest()) {
-                pathElements = project.getTestClasspathElements();
-            } else {
-                pathElements = project.getCompileClasspathElements();
-            }
-        } catch (DependencyResolutionRequiredException e) {
-            super.getLog().warn("exception calling getCompileClasspathElements", e);
-            return null;
+
+        if (isForTest()) {
+            pathElements = testClasspathElements;
+        } else {
+            pathElements = compileClasspathElements;
         }
 
         if (pluginArtifacts != null) {
@@ -260,12 +278,13 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
      *   <li>m2e build creates markers for eclipse</li>
      * </ul>
      * @param diagnostics
+     * @param tmpFileToOutputFile
      */
-    private void processDiagnostics(final List<Diagnostic<? extends JavaFileObject>> diagnostics) {
+    private void processDiagnostics(final List<Diagnostic<? extends JavaFileObject>> diagnostics, Function<File, File> tmpFileToOutputFile) {
         for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics) {
             JavaFileObject javaFileObject = diagnostic.getSource();
             if (javaFileObject != null) { // message was created without element parameter
-                File file = new File(javaFileObject.toUri().getPath());
+                File file = tmpFileToOutputFile.apply(new File(javaFileObject.toUri().getPath()));
                 Kind kind = diagnostic.getKind();
                 int lineNumber = (int) diagnostic.getLineNumber();
                 int columnNumber = (int) diagnostic.getColumnNumber();
@@ -315,8 +334,8 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
         try {
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             if (compiler == null) {
-                throw new MojoExecutionException(
-                        "You need to run build with JDK or have tools.jar on the classpath." + "If this occures during eclipse build make sure you run eclipse under JDK as well");
+                throw new MojoExecutionException("You need to run build with JDK or have tools.jar on the classpath."
+                        + "If this occures during eclipse build make sure you run eclipse under JDK as well");
             }
 
             boolean incremental = buildContext.isIncremental();
@@ -338,10 +357,9 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
 
             String processor = buildProcessor();
 
-            String outputDirectory = getOutputDirectory().getPath();
-            File tempDirectory = new File(project.getBuild().getDirectory(), "apt" + System.currentTimeMillis());
+            File tempDirectory = new File(projectBuildDirectory, "apt" + System.currentTimeMillis());
             tempDirectory.mkdirs();
-            outputDirectory = tempDirectory.getAbsolutePath();
+            String outputDirectory = tempDirectory.getAbsolutePath();
 
             List<String> compilerOptions = buildCompilerOptions(processor, compileClassPath, outputDirectory);
 
@@ -350,8 +368,8 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                 out = new StringWriter();
             }
             ExecutorService executor = Executors.newSingleThreadExecutor();
+            DiagnosticCollector<JavaFileObject> diagnosticCollector = new DiagnosticCollector<JavaFileObject>();
             try {
-                DiagnosticCollector<JavaFileObject> diagnosticCollector = new DiagnosticCollector<JavaFileObject>();
                 CompilationTask task = compiler.getTask(out, fileManager, diagnosticCollector, compilerOptions, null, compilationUnits1);
                 Future<Boolean> future = executor.submit(task);
                 Boolean rv = future.get();
@@ -359,12 +377,23 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                 if (Boolean.FALSE.equals(rv) && logOnlyOnError) {
                     getLog().error(out.toString());
                 }
-                processDiagnostics(diagnosticCollector.getDiagnostics());
             } finally {
                 executor.shutdown();
                 boolean deleteFilesInOutputDirectory = hasDeletedFiles || !incremental;
                 FileSync.syncFiles(deleteFilesInOutputDirectory, tempDirectory, getOutputDirectory());
                 FileUtils.deleteDirectory(tempDirectory);
+
+                final String tempDirectoryName = FilenameUtils.normalize(tempDirectory.getAbsolutePath());
+                processDiagnostics(diagnosticCollector.getDiagnostics(), new Function<File, File>() {
+                    @Override
+                    public File apply(final File input) {
+                        final String inputAbsolutePath = FilenameUtils.normalize(input.getAbsolutePath());
+                        if (inputAbsolutePath.startsWith(tempDirectoryName)) {
+                            return new File(getOutputDirectory(), inputAbsolutePath.replace(tempDirectoryName, ""));
+                        }
+                        return input;
+                    }
+                });
             }
 
             buildContext.refresh(getOutputDirectory());
@@ -385,12 +414,11 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
 
     protected abstract File getOutputDirectory();
 
-    @SuppressWarnings("unchecked")
     protected Set<File> getSourceDirectories() {
         File outputDirectory = getOutputDirectory();
         String outputPath = outputDirectory.getAbsolutePath();
         Set<File> directories = new HashSet<File>();
-        List<String> directoryNames = isForTest() ? project.getTestCompileSourceRoots() : project.getCompileSourceRoots();
+        List<String> directoryNames = isForTest() ? testCompileSourceRoots : compileSourceRoots;
         for (String name : directoryNames) {
             File file = new File(name);
             if (!file.getAbsolutePath().equals(outputPath) && file.exists()) {

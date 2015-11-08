@@ -1,8 +1,6 @@
 package com.mysema.maven.apt;
 
 import static org.junit.Assert.*;
-import static org.junit.Assert.assertTrue;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.URLClassLoader;
@@ -14,7 +12,6 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.artifact.versioning.VersionRange;
-import org.apache.maven.model.Build;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
@@ -46,17 +43,11 @@ public class AnnotationProcessorMojoTest {
         targetDir = new File("target");
         outputDir = new File(targetDir, "generated-sources/java");
         Log log = EasyMock.createMock(Log.class);
-        Build build = EasyMock.createMock(Build.class);
         BuildContext buildContext = new DefaultBuildContext();
         project = EasyMock.createMock(MavenProject.class);
-        List sourceRoots = Lists.newArrayList("src/test/resources/project-to-test/src/main/java", "notExisting/sourceRoot/folder");
+        List<String> sourceRoots = Lists.newArrayList("src/test/resources/project-to-test/src/main/java", "notExisting/sourceRoot/folder");
         URLClassLoader loader = (URLClassLoader) Thread.currentThread().getContextClassLoader();
-        List classpath = ClassPathUtils.getClassPath(loader);
-        EasyMock.expect(project.getBuild()).andReturn(build);
-        EasyMock.expect(project.getCompileSourceRoots()).andReturn(sourceRoots);
-        EasyMock.expect(project.getCompileSourceRoots()).andReturn(sourceRoots);
-        EasyMock.expect(project.getCompileClasspathElements()).andReturn(classpath);
-        EasyMock.expect(build.getDirectory()).andReturn(targetDir.getPath());
+        List<String> classpath = ClassPathUtils.getClassPath(loader);
         project.addCompileSourceRoot(outputDir.getAbsolutePath());
         EasyMock.expectLastCall();
         EasyMock.replay(project);
@@ -72,6 +63,9 @@ public class AnnotationProcessorMojoTest {
         mojo.setProject(project);
         mojo.setSourceEncoding("UTF-8");
         mojo.setOutputDirectory(outputDir);
+        mojo.projectBuildDirectory = targetDir;
+        mojo.compileSourceRoots = sourceRoots;
+        mojo.compileClasspathElements = classpath;
     }
 
     @After
